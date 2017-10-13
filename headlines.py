@@ -1,7 +1,7 @@
 #file for headlines project
 
-###todo: add openweathermap API
-###todo: add currency data
+###todo: add  cookies
+###todo: add style sheets
 
 import feedparser
 from flask import Flask
@@ -12,62 +12,67 @@ import urllib.parse
 import urllib.request
 import urllib
 
+import datetime
+from flask import make_response
+
+
 
 app = Flask(__name__)
 
-RSS_Feeds = {'bbc': 'http://feeds.bbci.co.uk/news/rss.xml',
-                 'cnn' : 'http://rss.cnn.com/rss/edition.rss',
-                 'iol' : 'http://www.iol.co.za/cmlink/1.640'}
+RSS_FEEDS = {'bbc': 'http://feeds.bbci.co.uk/news/rss.xml',
+             'cnn': 'http://rss.cnn.com/rss/edition.rss',
+             'fox': 'http://feeds.foxnews.com/foxnews/latest',
+             'iol': 'http://www.iol.co.za/cmlink/1.640'}
 
 WEATHER_URL = "http://api.openweathermap.org/data/2.5/weather?q={}&units=metric&APPID=0f5a40116672a3314e90170f87cb6108"
 CURRENCY_URL = "https://openexchangerates.org//api/latest.json?app_id=dbadb813d479442ea5856b7518df66b6"
 
 
-DEFAULTS = {'publication': 'bbc',
+DEFAULTS = {'publication': 'fox',
             'city': 'London,UK',
             'currency_from': 'GBP',
             'currency_to': 'USD'
             }
 
+def get_value_with_fallback(key):
+    if request.args.get(key):
+        return request.args.get(key)
+    if request.cookies.get(key):
+        return request.cookies.get(key)
+    return DEFAULTS[key]
+
+
 @app.route("/")
-
-
-
-# @app.route("/<publication>") commented out when adding HTTP GET
 
 def home():
     # get customised headlines, based on user input or default
-    publication = request.args.get('publication')
-    if not publication:
-        publication = DEFAULTS['publication']
+    publication = get_value_with_fallback("publication")
     articles = get_news(publication)
+
     # get customised weather based on user input or default
-    city = request.args.get('city')
-    if not city:
-        city = DEFAULTS['city']
+    city = get_value_with_fallback("city")
     weather = get_weather(city)
+
     # get customised currency based on user input or default
-    currency_from = request.args.get("currency_from")
-    if not currency_from:
-        currency_from = DEFAULTS['currency_from']
-    currency_to = request.args.get("currency_to")
-    if not currency_to:
-        currency_to = DEFAULTS['currency_to']
+    currency_from = get_value_with_fallback("currency_from")
+    currency_to = get_value_with_fallback("currency_to")
     rate, currencies = get_rate(currency_from, currency_to)
-    try:
-        return render_template("home.html", articles=articles, weather=weather,
-                           currency_from=currency_from, currency_to=currency_to, rate=rate,
-                           currencies=sorted(currencies))
-    except:
-        return "not working as intended... blame the programmer"
 
-def get_news(query):
+    # save cookies and return template
+    response = make_response(render_template("home.html", articles=articles,
+                                             weather=weather, currency_from=currency_from,
+                                             currency_to=currency_to, rate=rate, currencies=sorted(currencies)))
+    expires = datetime.datetime.now() + datetime.timedelta(days=365)
+    response.set_cookie("publication", publication, expires=expires)
+    response.set_cookie("city", city, expires=expires)
+    response.set_cookie("currency_from", currency_from, expires=expires)
+    response.set_cookie("currency_to", currency_to, expires=expires)
+    return response
 
-    if not query or query.lower() in RSS_Feeds:
-        publication = DEFAULTS['publication']
-    else:
-        publication = query.lower()
-    feed = feedparser.parse(RSS_Feeds[publication])
+
+
+def get_news(publication):
+    feed = feedparser.parse(RSS_FEEDS[publication.lower()])
     return feed['entries']
 
 
